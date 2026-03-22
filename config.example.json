@@ -1,0 +1,16 @@
+{
+  "port": 8081,
+  "basePath": "",
+  "reportsDir": "./reports",
+  "title": "Report Web Service",
+  "auth": {
+    "enabled": false,
+    "username": "",
+    "password": ""
+  },
+  "https": {
+    "enabled": true,
+    "certDir": "./cert",
+    "httpRedirect": true
+  }
+}

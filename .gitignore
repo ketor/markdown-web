@@ -1,0 +1,9 @@
+node_modules/
+cert/
+config.json
+credentials.json
+server.log
+server.pid
+monitor.log
+*.png
+.playwright-mcp/
