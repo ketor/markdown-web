@@ -512,7 +512,7 @@ async function renderMarkdown(fullPath, requestPath, res) {
     <div class="header">
       <a href="${config.basePath}${path.dirname(requestPath)}" class="back-link">← 返回目录</a>
       <div class="header-buttons">
-        <a href="${config.basePath}${requestPath}?download=1" class="download-btn" download="${path.basename(fullPath)}">
+        <a href="${config.basePath}${requestPath}?download=1" class="download-btn">
           <span>⬇️</span> 下载 Markdown
         </a>
         ${hasMermaid ? '<button class="mermaid-toggle" onclick="toggleAllMermaid()">切换所有 Mermaid 视图</button>' : ''}
