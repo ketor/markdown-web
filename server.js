@@ -88,6 +88,19 @@ if (config.auth.enabled) {
 // 静态文件服务
 app.use('/static', express.static(path.join(__dirname, 'public')));
 
+// Vendor: 自托管前端依赖（避免外部 CDN 不稳定）
+const vendorMount = (config.basePath || '') + '/vendor';
+const vendorAllow = {
+  'mermaid.min.js':       'mermaid/dist/mermaid.min.js',
+  'svg-pan-zoom.min.js':  'svg-pan-zoom/dist/svg-pan-zoom.min.js',
+};
+app.get(vendorMount + '/:file', (req, res, next) => {
+  const target = vendorAllow[req.params.file];
+  if (!target) return next();
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  res.sendFile(path.join(__dirname, 'node_modules', target));
+});
+
 // ============================================================
 // 路由
 // ============================================================
@@ -484,28 +497,79 @@ async function renderMarkdown(fullPath, requestPath, res) {
     .mermaid-container.view-code .mermaid { display: none; }
     .mermaid-container.view-code .mermaid-code { display: block; }
     .mermaid-controls {
-      text-align: right;
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
       margin-bottom: 8px;
     }
     .mermaid-controls button {
-      background: #666;
-      color: white;
-      border: none;
-      padding: 4px 12px;
-      border-radius: 4px;
+      height: 28px;
+      min-width: 32px;
+      padding: 0 10px;
+      background: #f6f8fa;
+      color: #24292f;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
-      margin-left: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+      user-select: none;
     }
     .mermaid-controls button:hover {
-      background: #555;
+      background: #eaeef2;
+      border-color: #afb8c1;
+    }
+    .mermaid-controls button:active {
+      background: #d0d7de;
+    }
+    .mermaid-controls button:focus-visible {
+      outline: 2px solid #0969da;
+      outline-offset: 1px;
+    }
+
+    /* 暗色模式 */
+    @media (prefers-color-scheme: dark) {
+      body { background: #161616; color: #d8d8d8; }
+      .container { background: #1f1f1f; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+      .header { border-bottom-color: #333; }
+      .back-link { color: #6cb6ff; }
+      .markdown-body h1 { color: #e6e6e6; border-bottom-color: #333; }
+      .markdown-body h2 { color: #d8d8d8; border-bottom-color: #2a2a2a; }
+      .markdown-body h3 { color: #c8c8c8; }
+      .markdown-body p { color: #d8d8d8; }
+      .markdown-body code { background: #2a2a2a; color: #f0f0f0; }
+      .markdown-body pre { background: #161616; }
+      .markdown-body blockquote { border-left-color: #444; color: #a0a0a0; }
+      .markdown-body th { background: #2a2a2a; }
+      .markdown-body th, .markdown-body td { border-color: #333; }
+      .markdown-body a { color: #6cb6ff; }
+      .mermaid { background: #161616; }
+      .mermaid-code { background: #161616; }
+      .mermaid-controls button {
+        background: #21262d;
+        color: #c9d1d9;
+        border-color: #30363d;
+      }
+      .mermaid-controls button:hover {
+        background: #30363d;
+        border-color: #484f58;
+      }
+      .mermaid-controls button:active {
+        background: #161b22;
+      }
     }
   </style>
   ${hasMath ? `
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
   ` : ''}
-  ${hasMermaid ? '<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>' : ''}
+  ${hasMermaid ? `<script src="${config.basePath}/vendor/mermaid.min.js"></script><script src="${config.basePath}/vendor/svg-pan-zoom.min.js"></script>` : ''}
 </head>
 <body>
   <div class="container">
@@ -540,52 +604,201 @@ async function renderMarkdown(fullPath, requestPath, res) {
     });
     ` : ''}
     ${hasMermaid ? `
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'default',
-      securityLevel: 'strict'
-    });
-
-    document.querySelectorAll('pre code.language-mermaid').forEach((block, index) => {
-      const container = document.createElement('div');
-      container.className = 'mermaid-container';
-      container.id = 'mermaid-' + index;
-
-      const controls = document.createElement('div');
-      controls.className = 'mermaid-controls';
-      controls.innerHTML = '<button onclick="toggleMermaid(' + index + ')">切换视图</button>';
-
-      const diagramDiv = document.createElement('div');
-      diagramDiv.className = 'mermaid';
-      diagramDiv.textContent = block.textContent;
-
-      const codeDiv = document.createElement('div');
-      codeDiv.className = 'mermaid-code';
-      codeDiv.innerHTML = '<pre><code class="language-mermaid">' + escapeHtml(block.textContent) + '</code></pre>';
-
-      container.appendChild(controls);
-      container.appendChild(diagramDiv);
-      container.appendChild(codeDiv);
-
-      block.parentElement.replaceWith(container);
-    });
-
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    function toggleMermaid(index) {
-      const container = document.getElementById('mermaid-' + index);
-      container.classList.toggle('view-code');
-    }
-
-    function toggleAllMermaid() {
-      document.querySelectorAll('.mermaid-container').forEach((container, index) => {
-        toggleMermaid(index);
+    (async function() {
+      const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: isDark ? 'dark' : 'default',
+        securityLevel: 'strict'
       });
-    }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      const containers = [];
+      document.querySelectorAll('pre code.language-mermaid').forEach((block, index) => {
+        const source = block.textContent;
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        container.id = 'mermaid-' + index;
+
+        const controls = document.createElement('div');
+        controls.className = 'mermaid-controls';
+        controls.innerHTML =
+          '<button data-act="zoomout" title="缩小"     aria-label="缩小">−</button>' +
+          '<button data-act="zoomin"  title="放大"     aria-label="放大">+</button>' +
+          '<button data-act="reset"   title="重置缩放" aria-label="重置">⟲</button>' +
+          '<button data-act="svg"     title="下载 SVG">↓ SVG</button>' +
+          '<button data-act="png"     title="下载 PNG">↓ PNG</button>' +
+          '<button data-act="toggle"  title="切换源码/图表">切换视图</button>';
+
+        const diagramDiv = document.createElement('div');
+        diagramDiv.className = 'mermaid';
+        diagramDiv.textContent = source;
+
+        const codeDiv = document.createElement('div');
+        codeDiv.className = 'mermaid-code';
+        codeDiv.innerHTML = '<pre><code class="language-mermaid">' + escapeHtml(source) + '</code></pre>';
+
+        container.appendChild(controls);
+        container.appendChild(diagramDiv);
+        container.appendChild(codeDiv);
+        block.parentElement.replaceWith(container);
+        containers.push(container);
+      });
+
+      try {
+        const nodes = containers.map(c => c.querySelector('.mermaid'));
+        if (nodes.length) await mermaid.run({ nodes });
+      } catch (err) {
+        console.error('Mermaid render error:', err);
+      }
+
+      const MERMAID_PAD = 40;        // .mermaid 上下 padding 各 20px
+      const MERMAID_MIN_H = 240;
+      const MERMAID_MAX_H = 800;
+
+      containers.forEach((container) => {
+        const svg = container.querySelector('.mermaid svg');
+        if (!svg) return;
+
+        const originalSvg = svg.cloneNode(true);
+        const mermaidDiv = container.querySelector('.mermaid');
+
+        // 在 svg-pan-zoom 接管之前，按当前布局测自然渲染高度，
+        // 否则它会把 SVG 拍成 150px 默认值。
+        svg.style.maxWidth = '100%';
+        svg.style.height = 'auto';
+        const naturalH = svg.getBoundingClientRect().height;
+        const targetH  = Math.min(Math.max(naturalH + MERMAID_PAD, MERMAID_MIN_H), MERMAID_MAX_H);
+        const innerH   = targetH - MERMAID_PAD;
+        mermaidDiv.style.height = targetH + 'px';
+        mermaidDiv.style.overflow = 'hidden';
+
+        // svg-pan-zoom 不会自动撑满父元素：必须给 SVG 显式宽高
+        svg.style.maxWidth = 'none';
+        svg.style.width  = '100%';
+        svg.style.height = innerH + 'px';
+        svg.style.cursor = 'grab';
+
+        let panZoom = null;
+        try {
+          panZoom = svgPanZoom(svg, {
+            zoomEnabled: true,
+            controlIconsEnabled: false,
+            fit: true,
+            center: true,
+            minZoom: 0.3,
+            maxZoom: 10,
+            zoomScaleSensitivity: 0.3,
+            mouseWheelZoomEnabled: false
+          });
+          svg.addEventListener('wheel', (e) => {
+            if (!e.ctrlKey) return;
+            e.preventDefault();
+            panZoom.zoomBy(1 - e.deltaY * 0.005);
+          });
+          // 容器/窗口尺寸变化后重算并 resize/fit，否则 SVG 不会跟随父元素
+          window.addEventListener('resize', () => {
+            try { panZoom.resize(); panZoom.fit(); panZoom.center(); } catch (e) {}
+          });
+        } catch (e) {
+          console.warn('pan/zoom init failed', e);
+          // 退化：让 SVG 自然显示
+          mermaidDiv.style.height = '';
+          mermaidDiv.style.overflow = '';
+        }
+
+        container.querySelectorAll('.mermaid-controls button').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const act = btn.dataset.act;
+            if      (act === 'zoomin'  && panZoom) panZoom.zoomIn();
+            else if (act === 'zoomout' && panZoom) panZoom.zoomOut();
+            else if (act === 'reset'   && panZoom) { panZoom.resize(); panZoom.fit(); panZoom.center(); }
+            else if (act === 'toggle') container.classList.toggle('view-code');
+            else if (act === 'svg')    downloadSvg(container, originalSvg);
+            else if (act === 'png')    downloadPng(container, originalSvg);
+          });
+        });
+      });
+
+      function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      function downloadSvg(container, svg) {
+        const xml = new XMLSerializer().serializeToString(svg);
+        const blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\\n' + xml], { type: 'image/svg+xml' });
+        triggerDownload(blob, container.id + '.svg');
+      }
+
+      function flattenForeignObjects(rootSvg) {
+        const flat = rootSvg.cloneNode(true);
+        flat.querySelectorAll('foreignObject').forEach(fo => {
+          const x = parseFloat(fo.getAttribute('x') || '0');
+          const y = parseFloat(fo.getAttribute('y') || '0');
+          const w = parseFloat(fo.getAttribute('width')  || '0');
+          const h = parseFloat(fo.getAttribute('height') || '0');
+          const text = (fo.textContent || '').trim();
+          if (!text) { fo.remove(); return; }
+          const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          t.setAttribute('x', String(x + w / 2));
+          t.setAttribute('y', String(y + h / 2));
+          t.setAttribute('text-anchor', 'middle');
+          t.setAttribute('dominant-baseline', 'middle');
+          t.setAttribute('font-family', 'sans-serif');
+          t.setAttribute('font-size', '14');
+          t.textContent = text;
+          fo.replaceWith(t);
+        });
+        return flat;
+      }
+
+      function downloadPng(container, svg) {
+        // 浏览器把含 foreignObject 的 SVG 渲染到 canvas 时会触发 taint，
+        // 必须先把 foreignObject 拍平成原生 <text> 再光栅化。
+        const xml = new XMLSerializer().serializeToString(flattenForeignObjects(svg));
+        const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          const vb = svg.viewBox && svg.viewBox.baseVal;
+          const w = (vb && vb.width)  || svg.clientWidth  || img.naturalWidth  || 800;
+          const h = (vb && vb.height) || svg.clientHeight || img.naturalHeight || 600;
+          const scale = 2;
+          const canvas = document.createElement('canvas');
+          canvas.width  = Math.max(1, Math.round(w * scale));
+          canvas.height = Math.max(1, Math.round(h * scale));
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = isDark ? '#161616' : '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((b) => {
+            if (b) triggerDownload(b, container.id + '.png');
+            URL.revokeObjectURL(url);
+          }, 'image/png');
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          alert('PNG 导出失败：浏览器无法加载该 SVG（可能因外部字体）');
+        };
+        img.src = url;
+      }
+
+      window.toggleAllMermaid = function() {
+        document.querySelectorAll('.mermaid-container').forEach(c => c.classList.toggle('view-code'));
+      };
+    })();
     ` : ''}
   </script>
 </body>
