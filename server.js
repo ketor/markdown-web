@@ -483,6 +483,7 @@ async function renderMarkdown(fullPath, requestPath, res) {
       background: #fafafa;
       border-radius: 6px;
       margin: 16px 0;
+      transition: height 0.2s ease;
     }
     .mermaid-code {
       display: none;
@@ -685,6 +686,29 @@ async function renderMarkdown(fullPath, requestPath, res) {
         svg.style.cursor = 'grab';
 
         let panZoom = null;
+        // 容器自然高度，用于 reset 和 zoom 时按比例联动
+        const baseHeight = targetH;
+
+        // 缩放时让容器高度跟着 zoom 等比例增长，封顶 min(85vh, 1200px)、3x 倍数。
+        // 横向密集图（时序图、宽流程图）放大时不再被原高度卡住。
+        function syncHeightToZoom() {
+          if (!panZoom) return;
+          const zoom = panZoom.getZoom(); // 1 = initial fit
+          const factor = Math.min(Math.max(zoom, 1), 3);
+          const cap = Math.min(window.innerHeight * 0.85, 1200);
+          const newH = Math.min(baseHeight * factor, cap);
+          mermaidDiv.style.height = newH + 'px';
+          svg.style.height = (newH - MERMAID_PAD) + 'px';
+          try { panZoom.resize(); } catch (e) {}
+        }
+
+        function resetSize() {
+          if (!panZoom) return;
+          mermaidDiv.style.height = baseHeight + 'px';
+          svg.style.height = (baseHeight - MERMAID_PAD) + 'px';
+          try { panZoom.resize(); panZoom.fit(); panZoom.center(); } catch (e) {}
+        }
+
         try {
           panZoom = svgPanZoom(svg, {
             zoomEnabled: true,
@@ -700,10 +724,11 @@ async function renderMarkdown(fullPath, requestPath, res) {
             if (!e.ctrlKey) return;
             e.preventDefault();
             panZoom.zoomBy(1 - e.deltaY * 0.005);
+            syncHeightToZoom();
           });
-          // 容器/窗口尺寸变化后重算并 resize/fit，否则 SVG 不会跟随父元素
+          // 窗口尺寸变化时重算上限并 refit
           window.addEventListener('resize', () => {
-            try { panZoom.resize(); panZoom.fit(); panZoom.center(); } catch (e) {}
+            try { syncHeightToZoom(); } catch (e) {}
           });
         } catch (e) {
           console.warn('pan/zoom init failed', e);
@@ -715,9 +740,9 @@ async function renderMarkdown(fullPath, requestPath, res) {
         container.querySelectorAll('.mermaid-controls button').forEach((btn) => {
           btn.addEventListener('click', () => {
             const act = btn.dataset.act;
-            if      (act === 'zoomin'  && panZoom) panZoom.zoomIn();
-            else if (act === 'zoomout' && panZoom) panZoom.zoomOut();
-            else if (act === 'reset'   && panZoom) { panZoom.resize(); panZoom.fit(); panZoom.center(); }
+            if      (act === 'zoomin'  && panZoom) { panZoom.zoomIn();  syncHeightToZoom(); }
+            else if (act === 'zoomout' && panZoom) { panZoom.zoomOut(); syncHeightToZoom(); }
+            else if (act === 'reset'   && panZoom) resetSize();
             else if (act === 'toggle') container.classList.toggle('view-code');
             else if (act === 'svg')    downloadSvg(container, originalSvg);
             else if (act === 'png')    downloadPng(container, originalSvg);
